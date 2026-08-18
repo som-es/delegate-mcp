@@ -8,6 +8,10 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{self, EnvFilter};
 
+const BIND_ADDR: &str = "0.0.0.0:8080";
+const SSE_PATH: &str = "/mcp";
+const POST_PATH: &str = "/mcp/message";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -21,18 +25,18 @@ async fn main() -> Result<()> {
     let shared_state: SharedState = Arc::new(RwLock::new(AppState::new().await?));
     let speech_tools = SpeechTools::new(shared_state);
 
-    let bind = "0.0.0.0:8080".parse()?;
+    let bind = BIND_ADDR.parse()?;
     let config = SseServerConfig {
         bind,
-        sse_path: "/mcp".to_string(),
-        post_path: "/mcp/message".to_string(),
+        sse_path: SSE_PATH.to_string(),
+        post_path: POST_PATH.to_string(),
         ct: CancellationToken::new(),
     };
     let sse_server = SseServer::serve_with_config(config).await?;
     sse_server.with_service(move || speech_tools.clone());
 
-    tracing::info!("MCP SSE listening on http://0.0.0.0:8080/mcp");
-    tracing::info!("POST messages to /mcp/message?sessionId=...");
+    tracing::info!("MCP SSE listening on http://{BIND_ADDR}{SSE_PATH}");
+    tracing::info!("POST messages to {POST_PATH}?sessionId=...");
     tokio::signal::ctrl_c().await?;
     tracing::info!("Shutting down");
     Ok(())

@@ -1,8 +1,8 @@
-use std::borrow::Cow;
-
-use rmcp::{Error as McpError, ServerHandler, model::*, schemars, tool};
+use rmcp::{ServerHandler, model::*, tool};
 
 use crate::state::SharedState;
+use crate::tools::args::{DelSearchArgs, RagQueryArgs};
+use crate::tools::error::{internal_error, json_text};
 
 #[derive(Clone)]
 pub struct SpeechTools {
@@ -19,7 +19,7 @@ impl SpeechTools {
     async fn rag_query_speeches(
         &self,
         #[tool(aggr)] args: RagQueryArgs,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResult, rmcp::Error> {
         let limit = args.limit.min(35);
         let state = self.state.read().await;
         let points = dataservice::political_analysis::delegate_context::search_points_for_entry(
@@ -30,66 +30,43 @@ impl SpeechTools {
             limit,
         )
         .await
-        .map_err(|_e| {
-            McpError::new(
-                ErrorCode::INTERNAL_ERROR,
-                Cow::Borrowed("cannot search for points in qdrant"),
-                None,
-            )
+        .map_err(|e| {
+            tracing::error!("Qdrant search failed: {e}");
+            internal_error("cannot search for points in qdrant")
         })?
         .into_iter()
         .map(|point| (point.score, point.payload))
         .collect::<Vec<_>>();
 
-        let out = serde_json::to_string(&points).map_err(|_e| {
-            McpError::new(
-                ErrorCode::INTERNAL_ERROR,
-                Cow::Borrowed("internal error"),
-                None,
-            )
-        })?;
-
-        Ok(CallToolResult::success(vec![Content::text(out)]))
+        json_text(&points)
     }
 
     #[tool(description = "Search over delegates")]
     async fn delegate_search(
         &self,
         #[tool(aggr)] args: DelSearchArgs,
-    ) -> Result<CallToolResult, McpError> {
-        let out = reqwest::get(&format!(
+    ) -> Result<CallToolResult, rmcp::Error> {
+        let url = format!(
             "https://somes.at/api/{}/v1/delegates/search?page={}&search={}&entries_per_page={}",
             args.parliament.as_str(),
             args.page,
             args.delegate_search_terms,
             args.limit
-        ))
-        .await
-        .map_err(|_e| {
-            McpError::new(
-                ErrorCode::INTERNAL_ERROR,
-                Cow::Borrowed("internal error"),
-                None,
-            )
-        })?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|_e| {
-            McpError::new(
-                ErrorCode::INTERNAL_ERROR,
-                Cow::Borrowed("internal error"),
-                None,
-            )
-        })?;
+        );
+        let value = reqwest::get(&url)
+            .await
+            .map_err(|e| {
+                tracing::error!("HTTP request failed: {e}");
+                internal_error("internal error")
+            })?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| {
+                tracing::error!("JSON decode failed: {e}");
+                internal_error("internal error")
+            })?;
 
-        let out = serde_json::to_string(&out).map_err(|_e| {
-            McpError::new(
-                ErrorCode::INTERNAL_ERROR,
-                Cow::Borrowed("internal error"),
-                None,
-            )
-        })?;
-        Ok(CallToolResult::success(vec![Content::text(out)]))
+        json_text(&value)
     }
 }
 
@@ -103,62 +80,4 @@ impl ServerHandler for SpeechTools {
             instructions: Some("Tools for searching parliamentary speeches and RAG.".into()),
         }
     }
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct GetSpeechArgs {
-    pub speech_id: i32,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct RagQueryArgs {
-    pub question: String,
-    pub delegate_id: i32,
-    #[serde(default = "default_limit")]
-    pub limit: u64,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub enum Parliament {
-    At,
-    Eu,
-}
-impl Parliament {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Parliament::At => "at",
-            Parliament::Eu => "eu",
-        }
-    }
-
-    pub fn from_council(council: &str) -> Parliament {
-        match council {
-            "ep" => Parliament::Eu,
-            _ => Parliament::At,
-        }
-    }
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct DelSearchArgs {
-    pub delegate_search_terms: String,
-    pub parliament: Parliament,
-    #[serde(default = "default_one")]
-    #[schemars(range(min = 1))]
-    pub page: u32,
-    #[serde(default = "default_limit_del")]
-    #[schemars(range(min = 1))]
-    pub limit: u32,
-}
-
-fn default_limit() -> u64 {
-    10
-}
-
-fn default_one() -> u32 {
-    1
-}
-
-fn default_limit_del() -> u32 {
-    3
 }
