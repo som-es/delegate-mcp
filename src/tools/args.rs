@@ -1,7 +1,7 @@
-use schemars::JsonSchema;
+use rmcp::schemars;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RagQueryArgs {
     pub question: String,
     pub delegate_id: i32,
@@ -9,7 +9,7 @@ pub struct RagQueryArgs {
     pub limit: u64,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub enum Parliament {
     At,
     Eu,
@@ -24,15 +24,13 @@ impl Parliament {
     }
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DelSearchArgs {
     pub delegate_search_terms: String,
     pub parliament: Parliament,
     #[serde(default = "default_one")]
-    #[schemars(range(min = 1))]
     pub page: u32,
     #[serde(default = "default_limit_del")]
-    #[schemars(range(min = 1))]
     pub limit: u32,
 }
 

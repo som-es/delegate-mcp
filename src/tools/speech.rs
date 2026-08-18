@@ -1,4 +1,7 @@
-use rmcp::{ServerHandler, model::*, tool};
+use rmcp::{
+    ErrorData, ServerHandler, handler::server::wrapper::Parameters, model::*, tool, tool_handler,
+    tool_router,
+};
 
 use crate::state::SharedState;
 use crate::tools::args::{DelSearchArgs, RagQueryArgs};
@@ -9,7 +12,7 @@ pub struct SpeechTools {
     state: SharedState,
 }
 
-#[tool(tool_box)]
+#[tool_router]
 impl SpeechTools {
     pub fn new(state: SharedState) -> Self {
         Self { state }
@@ -18,8 +21,8 @@ impl SpeechTools {
     #[tool(description = "RAG query over speeches")]
     async fn rag_query_speeches(
         &self,
-        #[tool(aggr)] args: RagQueryArgs,
-    ) -> Result<CallToolResult, rmcp::Error> {
+        Parameters(args): Parameters<RagQueryArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         let limit = args.limit.min(35);
         let state = self.state.read().await;
         let points = dataservice::political_analysis::delegate_context::search_points_for_entry(
@@ -44,8 +47,8 @@ impl SpeechTools {
     #[tool(description = "Search over delegates")]
     async fn delegate_search(
         &self,
-        #[tool(aggr)] args: DelSearchArgs,
-    ) -> Result<CallToolResult, rmcp::Error> {
+        Parameters(args): Parameters<DelSearchArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         let url = format!(
             "https://somes.at/api/{}/v1/delegates/search?page={}&search={}&entries_per_page={}",
             args.parliament.as_str(),
@@ -70,14 +73,12 @@ impl SpeechTools {
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for SpeechTools {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some("Tools for searching parliamentary speeches and RAG.".into()),
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_protocol_version(ProtocolVersion::V_2024_11_05)
+            .with_instructions("Tools for searching parliamentary speeches and RAG.".to_string())
     }
 }

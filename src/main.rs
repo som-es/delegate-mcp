@@ -1,16 +1,24 @@
 use anyhow::Result;
+use clap::Parser;
+use delegate_mcp::auth::redis_auth_middleware;
 use delegate_mcp::state::{AppState, SharedState};
 use delegate_mcp::tools::speech::SpeechTools;
 use dotenv::dotenv;
-use rmcp::transport::sse_server::{SseServer, SseServerConfig};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpService, session::local::LocalSessionManager,
+};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{self, EnvFilter};
 
-const BIND_ADDR: &str = "0.0.0.0:8080";
-const SSE_PATH: &str = "/mcp";
-const POST_PATH: &str = "/mcp/message";
+#[derive(Parser, Debug)]
+struct Cli {
+    /// Disable authentication
+    #[arg(long, default_value_t = false)]
+    no_auth: bool,
+}
+
+const MCP_PATH: &str = "/mcp";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,24 +28,36 @@ async fn main() -> Result<()> {
 
     dotenv()?;
 
-    tracing::info!("Starting Delegate MCP SSE");
+    let cli = Cli::parse();
+
+    tracing::info!("Starting Delegate MCP Streamable HTTP");
 
     let shared_state: SharedState = Arc::new(RwLock::new(AppState::new().await?));
-    let speech_tools = SpeechTools::new(shared_state);
+    let service = StreamableHttpService::new(
+        move || Ok(SpeechTools::new(shared_state.clone())),
+        LocalSessionManager::default().into(),
+        Default::default(),
+    );
 
-    let bind = BIND_ADDR.parse()?;
-    let config = SseServerConfig {
-        bind,
-        sse_path: SSE_PATH.to_string(),
-        post_path: POST_PATH.to_string(),
-        ct: CancellationToken::new(),
-    };
-    let sse_server = SseServer::serve_with_config(config).await?;
-    sse_server.with_service(move || speech_tools.clone());
+    let mut router = axum::Router::new().nest_service(MCP_PATH, service);
 
-    tracing::info!("MCP SSE listening on http://{BIND_ADDR}{SSE_PATH}");
-    tracing::info!("POST messages to {POST_PATH}?sessionId=...");
-    tokio::signal::ctrl_c().await?;
+    if !cli.no_auth {
+        router = router.layer(axum::middleware::from_fn(redis_auth_middleware));
+        tracing::info!("Redis token validation enabled");
+    } else {
+        tracing::info!("Authentication disabled via --no-auth");
+    }
+
+    let bind_addr = std::env::var("ADDR")?;
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!("MCP Streamable HTTP listening on http://{bind_addr}{MCP_PATH}");
+
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.ok();
+        })
+        .await?;
+
     tracing::info!("Shutting down");
     Ok(())
 }
