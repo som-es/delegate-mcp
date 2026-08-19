@@ -7,6 +7,7 @@ pub struct RagQueryArgs {
     pub delegate_id: i32,
     #[serde(default = "default_limit")]
     pub limit: u64,
+    pub parliament: Parliament,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -34,6 +35,12 @@ pub struct DelSearchArgs {
     pub limit: u32,
 }
 
-fn default_limit() -> u64 { 10 }
-fn default_one() -> u32 { 1 }
-fn default_limit_del() -> u32 { 3 }
+fn default_limit() -> u64 {
+    10
+}
+fn default_one() -> u32 {
+    1
+}
+fn default_limit_del() -> u32 {
+    3
+}

@@ -34,6 +34,10 @@ impl SpeechTools {
             args.delegate_id,
             &args.question,
             limit,
+            match args.parliament {
+                super::args::Parliament::At => dataservice::combx::Parliament::At,
+                super::args::Parliament::Eu => dataservice::combx::Parliament::Eu,
+            },
         )
         .await
         .map_err(|e| {

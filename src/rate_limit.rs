@@ -42,9 +42,14 @@ pub async fn rate_limit_middleware(
 
     let method_name = if let Ok(json) = serde_json::from_slice::<Value>(&bytes) {
         if let Some(params) = json.get("params") {
-            params.get("name").and_then(|v| v.as_str()).map(|s| s.to_string())
+            params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
         } else {
-            json.get("method").and_then(|v| v.as_str()).map(|s| s.to_string())
+            json.get("method")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
         }
     } else {
         None
@@ -59,7 +64,8 @@ pub async fn rate_limit_middleware(
                 let rate_key = format!("rate:{method}:{hashed}");
                 let count: i64 = state.redis.manager.incr(&rate_key, 1).await.unwrap_or(0);
                 if count == 1 {
-                    let _: Result<(), redis::RedisError> = state.redis.manager.expire(&rate_key, 3600).await;
+                    let _: Result<(), redis::RedisError> =
+                        state.redis.manager.expire(&rate_key, 3600).await;
                 }
                 if count > limit {
                     return axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();

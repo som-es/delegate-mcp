@@ -4,7 +4,7 @@ use delegate_mcp::auth::redis_auth_middleware;
 use delegate_mcp::rate_limit::{RateLimitState, rate_limit_middleware};
 use delegate_mcp::redis_state::RedisHandle;
 use delegate_mcp::state::{AppState, SharedState};
-use delegate_mcp::tools::speech::{SpeechTools, TOOL_DELEGATE_SEARCH, TOOL_RAG_QUERY_SPEECHES};
+use delegate_mcp::tools::speech::{SpeechTools, TOOL_RAG_QUERY_SPEECHES};
 use dotenv::dotenv;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
