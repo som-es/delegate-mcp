@@ -7,6 +7,9 @@ use crate::state::SharedState;
 use crate::tools::args::{DelSearchArgs, RagQueryArgs};
 use crate::tools::error::{internal_error, json_text};
 
+pub const TOOL_RAG_QUERY_SPEECHES: &str = "rag_query_speeches";
+pub const TOOL_DELEGATE_SEARCH: &str = "delegate_search";
+
 #[derive(Clone)]
 pub struct SpeechTools {
     state: SharedState,
@@ -18,7 +21,7 @@ impl SpeechTools {
         Self { state }
     }
 
-    #[tool(description = "RAG query over speeches")]
+    #[tool(name = "rag_query_speeches", description = "RAG query over speeches")]
     async fn rag_query_speeches(
         &self,
         Parameters(args): Parameters<RagQueryArgs>,
@@ -44,7 +47,7 @@ impl SpeechTools {
         json_text(&points)
     }
 
-    #[tool(description = "Search over delegates")]
+    #[tool(name = "delegate_search", description = "Search over delegates")]
     async fn delegate_search(
         &self,
         Parameters(args): Parameters<DelSearchArgs>,
