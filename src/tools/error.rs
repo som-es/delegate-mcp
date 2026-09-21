@@ -1,4 +1,4 @@
-use rmcp::{model::*, ErrorData};
+use rmcp::{ErrorData, model::*};
 
 pub fn internal_error(msg: &str) -> ErrorData {
     ErrorData::new(ErrorCode::INTERNAL_ERROR, msg.to_string(), None)

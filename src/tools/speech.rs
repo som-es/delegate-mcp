@@ -21,7 +21,10 @@ impl SpeechTools {
         Self { state }
     }
 
-    #[tool(name = "rag_query_speeches", description = "RAG query over speeches")]
+    #[tool(
+        name = "rag_query_speeches",
+        description = "RAG query over speeches. Prefere short conclusive requests that handles a single topic or question. Make several (smaller) requests (covering a single topic or question) instead of a long one as this is more accurate. There is no LLM (only embedding model) processing and no reranking taking place. You should not repeat the delegate name. This is already more cleanly handled by the delegate id. Always give proper citations."
+    )]
     async fn rag_query_speeches(
         &self,
         Parameters(args): Parameters<RagQueryArgs>,

@@ -3,9 +3,9 @@ use axum::extract::{Request, State};
 use axum::{middleware::Next, response::IntoResponse};
 use redis::AsyncCommands;
 use serde_json::Value;
-use sha3::{Digest, Sha3_256};
 use std::collections::HashMap;
 
+use crate::identity::{McpIdentity, hash_token};
 use crate::redis_state::RedisHandle;
 
 #[derive(Clone)]
@@ -57,11 +57,14 @@ pub async fn rate_limit_middleware(
 
     if let Some(method) = method_name {
         if let Some(&limit) = state.limits.get(&method) {
-            if let Some(token) = token_opt {
-                let mut hasher = Sha3_256::new();
-                hasher.update(token.as_bytes());
-                let hashed = hex::encode(hasher.finalize());
-                let rate_key = format!("rate:{method}:{hashed}");
+            let identity = parts
+                .extensions
+                .get::<McpIdentity>()
+                .map(|id| id.0.clone())
+                .or_else(|| token_opt.as_deref().map(hash_token));
+
+            if let Some(identity) = identity {
+                let rate_key = format!("rate:{method}:{identity}");
                 let count: i64 = state.redis.manager.incr(&rate_key, 1).await.unwrap_or(0);
                 if count == 1 {
                     let _: Result<(), redis::RedisError> =

@@ -1,13 +1,24 @@
 use axum::extract::{Request, State};
 use axum::{middleware::Next, response::IntoResponse};
 use redis::AsyncCommands;
-use sha3::{Digest, Sha3_256};
 
+use crate::identity::{hash_token, identity_from_stored};
 use crate::redis_state::RedisHandle;
 
+#[derive(Clone)]
+pub struct AuthState {
+    pub redis: RedisHandle,
+}
+
+impl AuthState {
+    pub fn new(redis: RedisHandle) -> Self {
+        Self { redis }
+    }
+}
+
 pub async fn redis_auth_middleware(
-    State(mut state): State<RedisHandle>,
-    req: Request,
+    State(mut state): State<AuthState>,
+    mut req: Request,
     next: Next,
 ) -> impl IntoResponse {
     let Some(auth_header) = req.headers().get(axum::http::header::AUTHORIZATION) else {
@@ -22,15 +33,15 @@ pub async fn redis_auth_middleware(
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
     };
 
-    let mut hasher = Sha3_256::new();
-    hasher.update(token.as_bytes());
-    let hashed = hex::encode(hasher.finalize());
+    let hashed = hash_token(token);
 
-    // Use shared ConnectionManager
-    let exists: bool = state.manager.exists(&hashed).await.unwrap_or(false);
-    if !exists {
+    let stored: Option<Vec<u8>> = state.redis.manager.get(&hashed).await.unwrap_or(None);
+    if stored.is_none() {
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
+
+    req.extensions_mut()
+        .insert(identity_from_stored(stored.as_deref(), &hashed));
 
     next.run(req).await
 }

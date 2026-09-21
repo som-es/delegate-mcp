@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use delegate_mcp::auth::redis_auth_middleware;
+use delegate_mcp::auth::{AuthState, redis_auth_middleware};
 use delegate_mcp::rate_limit::{RateLimitState, rate_limit_middleware};
 use delegate_mcp::redis_state::RedisHandle;
 use delegate_mcp::state::{AppState, SharedState};
@@ -15,8 +15,7 @@ use tracing_subscriber::{self, EnvFilter};
 
 #[derive(Parser, Debug)]
 struct Cli {
-    /// Disable authentication
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, help = "Disable authentication")]
     no_auth: bool,
 }
 
@@ -56,7 +55,7 @@ async fn main() -> Result<()> {
         "localhost",
         "127.0.0.1",
         "::1",
-        "somes.at:3001",
+        "somes.at:4050",
         "somes.at",
     ]);
     let service = StreamableHttpService::new(
@@ -65,23 +64,25 @@ async fn main() -> Result<()> {
         server_config,
     );
 
-    let mut router = axum::Router::new().nest_service(MCP_PATH, service);
+    let mut mcp_router = axum::Router::new().nest_service(MCP_PATH, service);
 
     // Rate limiting middleware with configurable limits
-    router = router.layer(axum::middleware::from_fn_with_state(
+    mcp_router = mcp_router.layer(axum::middleware::from_fn_with_state(
         rate_limit_state.clone(),
         rate_limit_middleware,
     ));
 
     if !cli.no_auth {
-        router = router.layer(axum::middleware::from_fn_with_state(
-            redis_handle.clone(),
+        mcp_router = mcp_router.layer(axum::middleware::from_fn_with_state(
+            AuthState::new(redis_handle.clone()),
             redis_auth_middleware,
         ));
         tracing::info!("Redis token validation enabled");
     } else {
         tracing::info!("Authentication disabled via --no-auth");
     }
+
+    let router = axum::Router::new().merge(mcp_router);
 
     let bind_addr = std::env::var("ADDR")?;
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
